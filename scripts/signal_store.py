@@ -90,6 +90,23 @@ def init_db():
             UNIQUE(signal_id, stock_code)
         );
 
+        CREATE TABLE IF NOT EXISTS agent_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_time        TEXT NOT NULL,
+            mode            TEXT NOT NULL,
+            posts_fetched   INTEGER DEFAULT 0,
+            signals_saved   INTEGER DEFAULT 0,
+            trades_opened   INTEGER DEFAULT 0,
+            trades_closed   INTEGER DEFAULT 0,
+            charts_generated INTEGER DEFAULT 0,
+            report_path     TEXT DEFAULT '',
+            errors          TEXT DEFAULT '[]',
+            duration_seconds REAL DEFAULT 0,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_log_time ON agent_log(run_time);
+
         CREATE INDEX IF NOT EXISTS idx_signals_date ON signals(date);
         CREATE INDEX IF NOT EXISTS idx_signals_reverse ON signals(reverse_signal);
         CREATE INDEX IF NOT EXISTS idx_trades_stock ON trades(stock_code);
@@ -225,6 +242,158 @@ def get_signal_stats() -> dict:
         "total_trades": total_trades,
         "open_trades": open_trades,
     }
+
+
+# ==================== Agent 日志 ====================
+
+def log_agent_run(run_data: dict) -> int:
+    """记录一次 Agent 运行日志。"""
+    conn = get_connection()
+    cur = conn.execute("""
+        INSERT INTO agent_log
+        (run_time, mode, posts_fetched, signals_saved, trades_opened, trades_closed,
+         charts_generated, report_path, errors, duration_seconds)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (
+        run_data.get("run_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        run_data.get("mode", "daily"),
+        run_data.get("posts_fetched", 0),
+        run_data.get("signals_saved", 0),
+        run_data.get("trades_opened", 0),
+        run_data.get("trades_closed", 0),
+        run_data.get("charts_generated", 0),
+        run_data.get("report_path", ""),
+        json.dumps(run_data.get("errors", []), ensure_ascii=False),
+        run_data.get("duration_seconds", 0),
+    ))
+    log_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return log_id
+
+
+def get_agent_status() -> dict:
+    """获取 Agent 运行状态。"""
+    conn = get_connection()
+    last = conn.execute(
+        "SELECT * FROM agent_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    recent = conn.execute(
+        "SELECT COUNT(*) as runs, SUM(signals_saved) as total_sigs, "
+        "SUM(trades_opened) as total_opens, SUM(trades_closed) as total_closes "
+        "FROM agent_log WHERE run_time >= date('now', '-7 days')"
+    ).fetchone()
+    conn.close()
+    return {
+        "last_run": dict(last) if last else None,
+        "weekly": dict(recent) if recent else {"runs": 0, "total_sigs": 0, "total_opens": 0, "total_closes": 0},
+    }
+
+
+# ==================== Agent 交易管理 ====================
+
+def get_signals_since(last_date: str) -> list[dict]:
+    """获取指定日期之后的所有信号（含该日）。"""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM signals WHERE date >= ? ORDER BY date", (last_date,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_trades_by_stock(stock_code: str, status: str = "open") -> list[dict]:
+    """查询某只股票的未平仓交易。"""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT t.*, s.date as signal_date FROM trades t "
+        "JOIN signals s ON t.signal_id = s.id "
+        "WHERE t.stock_code=? AND t.status=? ORDER BY t.id", (stock_code, status)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_latest_price_for_stock(stock_code: str) -> float | None:
+    """通过 Pandadata 获取股票最新收盘价。"""
+    import os
+    os.environ.setdefault("DEFAULT_USERNAME", "super_data_user")
+    os.environ.setdefault("DEFAULT_PASSWORD", "panda@2026^_^")
+    try:
+        from panda_data import init_token, get_stock_daily
+        init_token()
+        # 标准化股票代码
+        code = stock_code.strip().split(".")[0]
+        if code.startswith("6"):
+            symbol = f"{code}.SH"
+        elif code.startswith(("0", "3")):
+            symbol = f"{code}.SZ"
+        else:
+            symbol = code
+        df = get_stock_daily(symbol=symbol)
+        if df is not None and not df.empty:
+            # 取最新收盘价
+            if "close" in df.columns:
+                return float(df.iloc[-1]["close"])
+    except Exception:
+        return None
+    return None
+
+
+def auto_close_trades(config: dict = None) -> list[dict]:
+    """检查所有未平仓头寸，满足条件自动平仓。
+
+    Args:
+        config: {"take_profit_pct": 10, "stop_loss_pct": -5, "max_hold_days": 30}
+
+    Returns:
+        list of closed trade dicts
+    """
+    if config is None:
+        config = {"take_profit_pct": 10, "stop_loss_pct": -5, "max_hold_days": 30}
+
+    conn = get_connection()
+    open_trades = conn.execute(
+        "SELECT t.*, s.date as signal_date FROM trades t "
+        "JOIN signals s ON t.signal_id = s.id WHERE t.status='open'"
+    ).fetchall()
+    conn.close()
+
+    closed = []
+    for t in open_trades:
+        trade = dict(t)
+        current_price = get_latest_price_for_stock(trade["stock_code"])
+        if current_price is None:
+            continue
+
+        entry = trade["entry_price"]
+        direction = trade["direction"]
+        if direction == "long":
+            ret = (current_price - entry) / entry * 100
+        else:
+            ret = (entry - current_price) / entry * 100
+
+        reason = None
+        if ret >= config.get("take_profit_pct", 10):
+            reason = "take_profit"
+        elif ret <= config.get("stop_loss_pct", -5):
+            reason = "stop_loss"
+        else:
+            # 检查持仓天数
+            try:
+                signal_date = trade.get("signal_date", trade["trade_date"])
+                sd = datetime.strptime(signal_date[:10], "%Y-%m-%d") if signal_date else datetime.now()
+                days_held = (datetime.now() - sd).days
+                if days_held > config.get("max_hold_days", 30):
+                    reason = "max_hold_reached"
+            except Exception:
+                pass
+
+        if reason:
+            close_trade(trade["id"], current_price, datetime.now().strftime("%Y-%m-%d"), reason)
+            closed.append({**trade, "exit_price": current_price, "return_pct": round(ret, 2), "close_reason": reason})
+
+    return closed
 
 
 # ==================== 虚拟交易系统 ====================

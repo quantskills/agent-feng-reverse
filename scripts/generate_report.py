@@ -10,6 +10,38 @@ from pathlib import Path
 from typing import Optional
 
 
+def _format_trade_summary(ts: dict) -> str:
+    """格式化交易系统摘要。"""
+    if not ts:
+        return "（无数据）"
+    lines = [
+        "| 指标 | 数值 |",
+        "|------|:----:|",
+        f"| 总交易 | {ts.get('total_trades', 0)}笔 |",
+        f"| 已平仓 | {ts.get('closed_trades', 0)}笔 |",
+        f"| 胜率 | {ts.get('win_rate', 0)}% |",
+        f"| 累计收益 | {ts.get('total_return_pct', 0)}% |",
+        f"| 平均单笔 | {ts.get('avg_return_pct', 0)}% |",
+    ]
+    if ts.get("by_direction"):
+        lines.append("| **方向** | **数量** | **均收益** |")
+        lines.append("|---------|:-------:|:---------:|")
+        for d in ts["by_direction"]:
+            label = {"long": "做多(看空→买入)", "short": "做空(看多→卖出)"}
+            lines.append(f"| {label.get(d['direction'], d['direction'])} | {d['count']}笔 | {d['avg_return']}% |")
+    return "\n".join(lines)
+
+
+def _format_backtest_ref() -> str:
+    """生成回测报告引用。"""
+    from pathlib import Path
+    import glob
+    reports = sorted(Path(__file__).resolve().parent.parent.glob("output/回测报告_*.md"))
+    if reports:
+        return f"\n📊 详细回测报告: [{reports[-1].name}]({reports[-1].name})\n\n"
+    return ""
+
+
 def _embed_charts(chart_paths: list[str]) -> str:
     """将图表路径转为 Markdown 图片引用。"""
     parts = []
@@ -26,18 +58,10 @@ def generate_report(
     report_date: Optional[str] = None,
     chart_paths: Optional[list[str]] = None,
     backtest_ref: bool = False,
+    agent_mode: bool = False,
+    trade_summary: Optional[dict] = None,
 ) -> str:
-    """生成完整的 Markdown 报告。
-
-    Args:
-        posts: 原始微博数据列表
-        analysis_results: analyze_sentiment 的分析结果
-        data_source: 数据来源描述
-        report_date: 报告日期，默认今天
-
-    Returns:
-        Markdown 格式的报告文本
-    """
+    """生成完整的 Markdown 报告。"""
     if report_date is None:
         report_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -51,8 +75,9 @@ def generate_report(
     dates = [p.get("date", "") for p in posts if p.get("date")]
     date_range = f"{min(dates)} ~ {max(dates)}" if dates else "N/A"
 
-    # 构建报告
-    report = f"""# 峰哥反向指标日报 — {report_date}
+    # 标题
+    title = "峰哥反向指标 — Agent 自动交易报告" if agent_mode else "峰哥反向指标日报"
+    report = f"""# {title} — {report_date}
 
 ## 📡 数据概况
 - **数据来源**：{data_source}
@@ -72,6 +97,11 @@ def generate_report(
 
 {_embed_charts(chart_paths) if chart_paths else '（本次信号未涉及具体股票代码，未生成K线图）'}
 
+## 💼 虚拟交易系统
+
+{_format_trade_summary(trade_summary) if agent_mode and trade_summary else '（交易系统数据为空）'}
+
+{_format_backtest_ref() if backtest_ref else ''}
 ## 🔄 详细分析
 
 """

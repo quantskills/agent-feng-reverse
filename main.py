@@ -47,6 +47,9 @@ def print_help():
     print("  python main.py --backtest               # 运行回测验证")
     print("  python main.py --portfolio              # 查看虚拟交易系统")
     print("  python main.py --stats                  # 数据库统计")
+    print("  python main.py --agent                  # Agent 单次运行（虚拟交易系统）")
+    print("  python main.py --agent-watch            # Agent 持续监控模式")
+    print("  python main.py --agent-status           # 查看 Agent 运行状态")
     print("  python main.py --cron                   # 定时任务（更新回测+报告）")
     print()
     print("示例:")
@@ -369,6 +372,25 @@ def main():
             print("请指定文件路径: python main.py --file <path>")
             return
         cmd_file(sys.argv[2])
+
+    elif cmd == "--agent":
+        from scripts.agent_runner import run_pipeline, load_config
+        config = load_config(mode="daily")
+        run_pipeline(config)
+
+    elif cmd == "--agent-watch":
+        from scripts.agent_runner import watch_loop, load_config
+        interval = 30
+        if "--interval" in sys.argv:
+            idx = sys.argv.index("--interval")
+            if idx + 1 < len(sys.argv):
+                interval = int(sys.argv[idx + 1])
+        config = load_config(mode="watch", interval=interval)
+        watch_loop(config)
+
+    elif cmd == "--agent-status":
+        from scripts.agent_runner import print_status
+        print_status()
 
     elif cmd == "--chart":
         if len(sys.argv) < 3:
