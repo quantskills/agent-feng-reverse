@@ -302,16 +302,13 @@ def verify(config: dict) -> dict:
     """运行回测验证，检查未验证信号。"""
     from scripts.backtest import run_backtest
 
-    print("\n  [VERIFY] 运行回测验证...")
+    print("\n [VERIFY] 运行回测验证...")
     metrics = run_backtest()
-    print(f"     已验证: {metrics['total_verifications']} | "
-          f"5日胜率: {metrics['win_rate_5d']}% | "
-          f"平均收益: {metrics['avg_return_5d']}%")
-    return {"verified": metrics["total_verifications"], "metrics": metrics}
-
-
-# ==================== 阶段5: K线图 ====================
-
+    vc = metrics.get('total_verifications', metrics.get('total', 0))
+    wr = metrics.get('win_rate_5d', 0)
+    ar = metrics.get('avg_return_5d', 0)
+    print(f"     已验证: {vc} | 5日胜率: {wr}% | 平均收益: {ar}%")
+    return {"verified": vc, "metrics": metrics}
 def chart(analyze_result: dict, config: dict) -> dict:
     """生成K线信号标注图（含大盘指数）。"""
     from scripts.plot_signals import plot_signal_chart, plot_multi_stock_charts

@@ -66,7 +66,7 @@ def generate_report(
         report_date = datetime.now().strftime("%Y-%m-%d")
 
     # 统计
-    total = len(posts)
+    total = len(posts) or 1  # 避免除以0
     signals_bearish = [r for r in analysis_results if r["signal"]["signal"] == "bearish"]
     signals_bullish = [r for r in analysis_results if r["signal"]["signal"] == "bullish"]
     signals_neutral = [r for r in analysis_results if r["signal"]["signal"] == "neutral"]
