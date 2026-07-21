@@ -21,6 +21,9 @@ quantSkills:
   - sentiment
   - feng-ge
   - contrarian
+  - backtest
+  - chart
+  - database
   platforms:
   - claude-code
   - cursor
@@ -136,6 +139,53 @@ quantSkills:
 
 根据采集和分析结果，生成结构化的 Markdown 报告，保存到 `output/` 目录。
 
+### Step 5：信号数据库持久化
+
+每次分析结果自动存入 SQLite 数据库 `output/signal_store.db`：
+
+**signals 表** — 存储每条分析结果（日期、原文、股票代码、板块、情绪、强度、行为信号、反向信号）
+**trades 表** — 虚拟反向交易记录（做多/做空、入场价、出场价、盈亏）
+**verifications 表** — 回测验证结果（信号日 vs N日后涨跌幅）
+
+```bash
+python main.py --stats   # 查看数据库统计
+```
+
+### Step 6：K线图信号标注
+
+通过 Pandadata API 获取股票日K线，用 mplfinance 绘制蜡烛图，叠加信号标记：
+- 🟢 绿色上箭头 = 反向看多信号（峰哥看空→我们做多）
+- 🔴 红色下箭头 = 反向看空信号（峰哥看多→我们做空）
+- 标注信号后 N 日涨跌幅
+
+图表保存到 `output/charts/` 目录（PNG，150dpi）。
+
+```bash
+python main.py --chart 688981 2026-06-01 2026-07-21
+python main.py --chart 600519 2026-06-01 2026-07-21
+```
+
+### Step 7：回测验证 & 虚拟交易系统
+
+对每条含股票代码的信号：
+1. 通过 Pandadata 获取信号日后 N 个交易日的股价
+2. 按反向逻辑判断预测是否正确
+3. 自动开虚拟交易（做多/做空），计算盈亏
+4. 汇总胜率、平均收益、多空方向表现
+
+```bash
+python main.py --backtest    # 运行回测
+python main.py --portfolio   # 查看虚拟交易盈亏
+```
+
+### Step 8：自动跟踪流水线
+
+```bash
+python main.py --track        # 完整流水线：输入→分析→存库→回测→K线图→报告
+python main.py --cron         # 定时任务
+python scripts/auto_track.py --file data.json  # 从文件批量处理
+```
+
 ## 报告模板
 
 ```markdown
@@ -174,14 +224,29 @@ quantSkills:
 - 如有历史报告，可要求叠加分析胜率趋势
 - 报告语言：中文（除非用户另有要求）
 
-## 调用方式
+## CLI 命令参考
 
-```
+```bash
+# 分析跟踪
+python main.py --track                # 完整流水线（交互输入→分析→存库→回测→K线→报告）
+python main.py --interactive          # 交互分析+存库
+python main.py --file <path>          # 从JSON/TXT文件分析
+python main.py --cron                 # 定时任务模式
+
+# K线图表
+python main.py --chart <code> [start] [end]  # K线图+信号标注
+python main.py --chart 688981 2026-06-01 2026-07-21  # 示例：中芯国际
+
+# 回测 & 交易
+python main.py --backtest             # 运行回测验证
+python main.py --portfolio            # 查看虚拟交易盈亏
+python main.py --stats                # 数据库统计
+
+# 在 Claude Code 中使用
 @skill-feng-reverse 峰哥今天说了什么
 @skill-feng-reverse 分析峰哥最近一周的观点
 @skill-feng-reverse 峰哥最近在看什么股票
 @skill-feng-reverse 更新峰哥反向指标胜率统计
-@skill-feng-reverse 峰哥的历史反向案例
 ```
 
 ## 自动化（定时运行）
@@ -226,8 +291,14 @@ quantSkills:
 - `references/sources.md`: 数据来源和搜索策略
 - `references/methodology.md`: 反向指标方法论（含行为信号理论）
 - `references/cases.md`: 经典反向案例记录
+- `output/signal_store.db`: SQLite 信号数据库
+- `output/charts/`: K线图信号标注 PNG 文件
 - `scripts/fetch_posts.py`: 微博数据采集脚本
 - `scripts/analyze_sentiment.py`: 观点分析脚本（含行为信号识别）
+- `scripts/signal_store.py`: 信号数据库 & 虚拟交易系统
+- `scripts/plot_signals.py`: K线图信号标注（mplfinance + Pandadata）
+- `scripts/backtest.py`: 回测验证引擎
+- `scripts/auto_track.py`: 自动跟踪流水线
 - `scripts/generate_report.py`: 报告生成脚本
 
 ## 质量标准
