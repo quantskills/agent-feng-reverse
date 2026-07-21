@@ -62,11 +62,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 CHART_DIR = Path(__file__).resolve().parent.parent / "output" / "charts"
 
 # 大盘指数列表（始终生成图表）
-INDEX_CODES = [
-    ("000688", "科创50"),
-    ("000300", "沪深300"),
-    ("000001", "上证指数"),
-]
+DEFAULT_INDEX = ("000001", "上证指数")
 
 # ==================== Pandadata 数据获取 ====================
 

@@ -310,42 +310,34 @@ def chart(analyze_result: dict, config: dict) -> dict:
     """生成K线信号标注图（含大盘指数）。"""
     from scripts.plot_signals import plot_signal_chart, plot_multi_stock_charts
 
+    # 只取本次分析结果中的股票代码，不翻历史
     all_codes = set()
     for r in analyze_result.get("results", []):
         codes = r["analysis"].get("stock_codes", [])
         all_codes.update(codes)
-    if not all_codes:
-        signals = get_all_signals(limit=100)
-        for s in signals:
-            try:
-                codes = json.loads(s.get("stock_codes", "[]"))
-                all_codes.update(codes)
-            except Exception:
-                pass
 
     chart_paths = []
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
 
-    # 始终生成大盘指数
-    for idx_code, idx_name in [("000688", "科创50"), ("000300", "沪深300"), ("000001", "上证指数")]:
-        try:
-            p = plot_signal_chart(idx_code, idx_name, start, end)
-            if p:
-                chart_paths.append(p)
-        except Exception as e:
-            print(f"    跳过 {idx_code}: {e}")
-    print(f"  [CHART] 指数: {sum(1 for p in chart_paths if any(i in p for i in ['000688','000300','000001']))}/3张")
+    # 默认生成上证指数
+    try:
+        p = plot_signal_chart("000001", "上证指数", start, end)
+        if p:
+            chart_paths.append(p)
+            print(f"  [CHART] 上证指数 OK")
+    except Exception as e:
+        print(f"  [CHART] 上证指数跳过: {e}")
 
+    # 本次信号提到个股才出个股图
     if all_codes:
         print(f"  [CHART] 个股: {min(len(all_codes),5)}只...")
         more = plot_multi_stock_charts(list(all_codes)[:5], start_date=start, end_date=end)
         chart_paths.extend(more)
-
-    if chart_paths:
-        print(f"     图表合计: {len(chart_paths)}张")
     else:
-        print(f"  [CHART] 无数据跳过")
+        print(f"  [CHART] 峰哥未提个股，仅上证指数")
+
+    print(f"     图表合计: {len(chart_paths)}张")
     return {"charts": chart_paths}
 
 
