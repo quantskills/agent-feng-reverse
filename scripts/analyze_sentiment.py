@@ -53,10 +53,22 @@ BEARISH_WORDS = [
     "顶部", "高估", "太贵", "危险", "风险",
     "撤退", "逃顶", "出局", "破位", "杀跌",
     "新低", "破位向下", "阴跌", "闪崩",
-    # 行为信号：卸载/销户/退出 — 峰哥经典"不玩了"模式
-    "卸载同花顺", "卸载软件", "销户", "退出股市",
-    "不玩了", "不玩儿了", "再也不玩", "拜拜",
-    "彻底卸载", "删软件", "删app",
+]
+
+# ========== 行为信号定义（权重高于文本关键词） ==========
+# 每个行为：检测关键词 → 行为类型 → 反向信号 → 权重倍率
+BEHAVIORAL_SIGNALS = [
+    # 卸载/销户类 — 离场行为，最强反向看多信号
+    {"keywords": ["卸载同花顺", "卸载软件", "彻底卸载", "删软件", "删app"], "action": "uninstall", "type": "quit", "reverse_signal": "bullish", "weight": 3},
+    {"keywords": ["销户", "退出股市", "永久退出"], "action": "cancel_account", "type": "quit", "reverse_signal": "bullish", "weight": 3},
+    # 清仓/不玩了类 — 割肉离场
+    {"keywords": ["一键清仓", "全部卖了", "清完"], "action": "liquidate", "type": "quit", "reverse_signal": "bullish", "weight": 2},
+    {"keywords": ["不玩了", "不玩儿了", "再也不玩", "拜拜吧"], "action": "give_up", "type": "quit", "reverse_signal": "bullish", "weight": 2},
+    # 全仓/回归类 — 追高进场，最强反向看空信号
+    {"keywords": ["全仓", "满仓", "梭哈"], "action": "full_position", "type": "buy", "reverse_signal": "bearish", "weight": 2},
+    # 情绪崩溃类
+    {"keywords": ["破防了", "真破防了"], "action": "meltdown", "type": "panic", "reverse_signal": "bullish", "weight": 2},
+    {"keywords": ["晒", "截图"], "action": "show_proof", "type": "post", "reverse_signal": "none", "weight": 1},
 ]
 
 
@@ -87,15 +99,55 @@ def extract_sectors(text: str) -> list[str]:
     return mentioned
 
 
-def analyze_sentiment(text: str) -> dict:
-    """分析单条微博的情绪和观点。
+def detect_behavioral_signals(text: str) -> dict:
+    """检测文本中的行为信号并返回权重倍率。
 
     Returns:
         {
-            "bullish_score": int,   # 看多得分
-            "bearish_score": int,   # 看空得分
-            "sentiment": str,       # bullish / bearish / neutral
-            "strength": str,        # strong / moderate / weak
+            "detected": bool,
+            "signals": [...],
+            "max_weight": int,       # 最高权重倍率 0-3
+            "effective_signal": str,  # bullish / bearish / none
+        }
+    """
+    detected = []
+    for bs in BEHAVIORAL_SIGNALS:
+        for kw in bs["keywords"]:
+            if kw in text:
+                detected.append({
+                    "action": bs["action"],
+                    "matched": kw,
+                    "reverse_signal": bs["reverse_signal"],
+                    "weight": bs["weight"],
+                })
+                break
+
+    if not detected:
+        return {"detected": False, "signals": [], "max_weight": 0, "effective_signal": "none"}
+
+    max_w = max(d["weight"] for d in detected)
+    weighted = [d for d in detected if d["weight"] == max_w]
+    # quit > buy > panic 优先级
+    prio = {"quit": 3, "buy": 2, "panic": 1}
+    best = max(weighted, key=lambda d: prio.get(d["action"], 0))
+
+    return {
+        "detected": True,
+        "signals": detected,
+        "max_weight": max_w,
+        "effective_signal": best["reverse_signal"],
+    }
+
+
+def analyze_sentiment(text: str) -> dict:
+    """分析单条微博的情绪、观点和行为信号。
+
+    Returns:
+        {
+            "sentiment": str,          # bullish / bearish / neutral
+            "strength": str,           # 原始文本强度
+            "final_strength": str,     # 结合行为权重后的最终强度
+            "behavioral": dict,        # 行为信号检测结果
             "stock_codes": [...],
             "sectors": [...],
         }
@@ -114,7 +166,7 @@ def analyze_sentiment(text: str) -> dict:
         sentiment = "neutral"
         score = 0
 
-    # 强度判断
+    # 文本强度判断
     has_exclamation = "！" in text or "!" in text
     has_repetition = len(set(re.findall(r"[加买减清卖割抄梭满](?:[仓入底仓仓肉仓柴)]|$)", text))) > 2
     has_position = bool(re.search(r"[持买加减清][仓有]", text))
@@ -139,11 +191,31 @@ def analyze_sentiment(text: str) -> dict:
     else:
         strength = "weak"
 
+    # 行为信号检测（权重高于文本）
+    behavioral = detect_behavioral_signals(text)
+
+    # 最终强度 = 文本强度 + 行为权重倍率加成
+    level_map = {"weak": 1, "moderate": 2, "strong": 3}
+    base_level = level_map[strength]
+    bw = behavioral["max_weight"]
+
+    if bw >= 3:
+        final_level = 3          # 卸载/销户 → 直接拉满
+    elif bw >= 2:
+        final_level = min(3, base_level + 1)  # 清仓/全仓 → 升一级
+    elif bw >= 1 and base_level == 1:
+        final_level = 2          # 一般行为 → weak→moderate
+    else:
+        final_level = base_level
+
+    rev = {1: "weak", 2: "moderate", 3: "strong"}
+    final_strength = rev[final_level]
+
     return {
-        "bullish_score": bullish_count,
-        "bearish_score": bearish_count,
         "sentiment": sentiment,
         "strength": strength,
+        "final_strength": final_strength,
+        "behavioral": behavioral,
         "stock_codes": extract_stock_codes(text),
         "sectors": extract_sectors(text),
         "has_earnings_proof": has_earnings_proof,
@@ -151,7 +223,7 @@ def analyze_sentiment(text: str) -> dict:
 
 
 def generate_reverse_signal(analysis: dict, post_text: str = "") -> dict:
-    """根据观点分析生成反向信号。
+    """根据观点分析 + 行为信号生成反向信号。
 
     Returns:
         {
@@ -162,52 +234,68 @@ def generate_reverse_signal(analysis: dict, post_text: str = "") -> dict:
         }
     """
     sentiment = analysis["sentiment"]
-    strength = analysis["strength"]
+    final_strength = analysis.get("final_strength", analysis["strength"])
+    behavioral = analysis.get("behavioral", {})
     has_earnings = analysis.get("has_earnings_proof", False)
 
     strength_map = {"weak": 1, "moderate": 2, "strong": 3}
 
-    # 反向映射
+    # 如果检测到行为信号，行为方向覆盖文本方向
+    if behavioral.get("detected") and behavioral["effective_signal"] != "none":
+        effective_signal = behavioral["effective_signal"]
+        # 用最终强度（已含行为权重）
+        base_strength = strength_map.get(final_strength, 1)
+        action_names = ", ".join(set(s["action"] for s in behavioral["signals"]))
+        action_words = ", ".join(set(s["matched"][:15] for s in behavioral["signals"]))
+        weight = behavioral["max_weight"]
+
+        if effective_signal == "bullish":
+            # 行为信号方向 = 看多（卸载/清仓/崩溃 → 反向看多）
+            label = {
+                1: "轻度反向看多",
+                2: "反向看多",
+                3: "强烈反向看多 [目标]",
+            }[base_strength]
+            reason = f"行为信号「{action_names}」(x{weight})，命中关键词「{action_words}」，反向逻辑 → 关注/看多"
+            if "quit" in action_names or "panic" in action_names:
+                reason += "，离场/崩溃行为=底部特征"
+            signal = "bullish"
+        else:
+            # 行为信号方向 = 看空（满仓/回归 → 反向看空）
+            label = {
+                1: "轻度反向看空",
+                2: "反向看空",
+                3: "强烈反向看空 [!]",
+            }[base_strength]
+            reason = f"行为信号「{action_names}」(x{weight})，命中关键词「{action_words}」，反向逻辑 → 谨慎/看空"
+            if "buy" in action_names:
+                reason += "，追高行为=顶部特征"
+            signal = "bearish"
+
+        return {"signal": signal, "signal_label": label, "signal_strength": base_strength, "reason": reason}
+
+    # 无行为信号：纯文本分析 + 反向映射
+    strength = analysis["strength"]
+    base_strength = strength_map.get(strength, 1)
+    if has_earnings:
+        base_strength = min(3, base_strength + 1)
+
     if sentiment == "bullish":
-        base_strength = strength_map.get(strength, 1)
-        if has_earnings:
-            base_strength = min(3, base_strength + 1)
         signal = "bearish"
-        label = {
-            1: "轻度反向看空",
-            2: "反向看空",
-            3: "强烈反向看空 [!]",
-        }[base_strength]
+        label = {1: "轻度反向看空", 2: "反向看空", 3: "强烈反向看空 [!]"}[base_strength]
         reason = f"峰哥看多（强度:{strength}），反向逻辑 → 谨慎/看空"
         if has_earnings:
             reason += "，且有持仓/收益证据，见顶风险增加"
-
     elif sentiment == "bearish":
-        base_strength = strength_map.get(strength, 1)
-        if has_earnings:
-            base_strength = min(3, base_strength + 1)
         signal = "bullish"
-        label = {
-            1: "轻度反向看多",
-            2: "反向看多",
-            3: "强烈反向看多 [目标]",
-        }[base_strength]
+        label = {1: "轻度反向看多", 2: "反向看多", 3: "强烈反向看多 [目标]"}[base_strength]
         reason = f"峰哥看空（强度:{strength}），反向逻辑 → 关注/看多"
         if has_earnings:
             reason += "，且有亏损/割肉证据，见底机会增加"
-
     else:
-        signal = "neutral"
-        label = "无明显信号"
-        base_strength = 0
-        reason = "峰哥观点中性，无明确方向信号"
+        return {"signal": "neutral", "signal_label": "无明显信号", "signal_strength": 0, "reason": "峰哥观点中性，无明确方向信号"}
 
-    return {
-        "signal": signal,
-        "signal_label": label,
-        "signal_strength": base_strength,
-        "reason": reason,
-    }
+    return {"signal": signal, "signal_label": label, "signal_strength": base_strength, "reason": reason}
 
 
 def analyze_posts(posts: list[str]) -> list[dict]:
