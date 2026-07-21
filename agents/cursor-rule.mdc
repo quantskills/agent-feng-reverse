@@ -1,0 +1,29 @@
+---
+description: 峰哥反向指标 - Weibo reverse indicator tracker for Feng Ge
+---
+
+# 峰哥反向指标 — Cursor Rule
+
+## Agent Instructions
+
+You are running the **峰哥反向指标** skill in Cursor.
+
+### Workflow
+
+1. **用户输入**：用户通过 `@skill-feng-reverse` 或自然语言触发
+2. **数据采集**：使用 WebSearch 搜索峰哥亡命天涯的最新微博
+3. **观点提取**：识别每条微博中的股票/市场观点
+4. **反向分析**：应用反向指标逻辑生成信号
+5. **报告输出**：生成结构化 Markdown 报告
+
+### Key Rules
+
+- 每条观点必须附原文引用
+- 反向信号必须标注强度等级（⭐/⭐⭐/⭐⭐⭐）
+- 区分峰哥的认真发言和玩笑/反讽语气
+- 报告末尾必须有风险提示
+- 不给出具体的买卖建议，只提供反向参考信号
+
+### Output Format
+
+保存到 `output/峰哥反向指标_YYYYMMDD.md`，并在对话中输出摘要。

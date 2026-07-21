@@ -1,0 +1,15 @@
+name: feng-reverse-indicator
+description: Track 峰哥亡命天涯 Weibo posts and generate reverse indicator signals
+instructions:
+  - "Read SKILL.md for full workflow and methodology"
+  - "Use WebSearch to find latest posts from 峰哥亡命天涯"
+  - "Extract stock/market opinions and classify sentiment"
+  - "Apply reverse indicator logic to generate contrarian signals"
+  - "Save report to output/ directory"
+tools:
+  - web_search
+  - code_interpreter
+metadata:
+  skill_type: monitor
+  category: a-share
+  source: weibo
