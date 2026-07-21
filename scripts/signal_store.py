@@ -200,7 +200,7 @@ def get_signals_by_stock(stock_code: str) -> list[dict]:
 def get_signals_by_date_range(start: str, end: str) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM signals WHERE date >= ? AND date <= ? ORDER BY date", (start, end)
+        "SELECT * FROM signals WHERE substr(date,1,10) >= ? AND substr(date,1,10) <= ? ORDER BY date", (start, end)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -296,7 +296,7 @@ def get_signals_since(last_date: str) -> list[dict]:
     """获取指定日期之后的所有信号（含该日）。"""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM signals WHERE date >= ? ORDER BY date", (last_date,)
+        "SELECT * FROM signals WHERE substr(date,1,10) >= ? ORDER BY date", (last_date,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

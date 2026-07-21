@@ -108,7 +108,9 @@ def generate_report(
 
     for i, (post, result) in enumerate(zip(posts, analysis_results), 1):
         content = post.get("content", post.get("text", ""))
-        date = post.get("date", "")
+        raw_date = post.get("date", "")
+        # 显示 HH:MM（如果 date 包含时间）
+        date = raw_date[:16] if len(raw_date) > 16 else raw_date[:10]
         a = result["analysis"]
         s = result["signal"]
 

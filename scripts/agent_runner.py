@@ -162,7 +162,13 @@ def analyze(posts: list[dict], config: dict) -> dict:
 
     for i, post in enumerate(posts):
         text = post.get("content", "")
-        date = post.get("date", datetime.now().strftime("%Y-%m-%d"))
+        raw_date = post.get("date", "")
+        if raw_date and len(raw_date) <= 10:
+            dt = f"{raw_date} {datetime.now().strftime('%H:%M:%S')}"
+        elif raw_date:
+            dt = raw_date
+        else:
+            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if not text.strip():
             continue
 
@@ -172,7 +178,7 @@ def analyze(posts: list[dict], config: dict) -> dict:
         signal = generate_reverse_signal(analysis, text)
 
         # 存入数据库
-        sid = save_signal_from_analysis(text, date, analysis, signal)
+        sid = save_signal_from_analysis(text, dt, analysis, signal)
         saved += 1
 
         rev = signal["signal"]
@@ -182,7 +188,7 @@ def analyze(posts: list[dict], config: dict) -> dict:
         print(f"     {signal['reason'][:80]}")
 
         results.append({
-            "post": post,
+            "post": {**post, "date": dt},
             "analysis": analysis,
             "signal": signal,
             "signal_id": sid,
@@ -353,13 +359,6 @@ def report(analyze_result: dict, trade_result: dict,
         "analysis": r["analysis"],
         "signal": r["signal"],
     } for r in analyze_result.get("results", [])]
-
-    if not posts:
-        posts = [{"date": datetime.now().strftime("%Y-%m-%d"), "content": "(agent auto run - no new posts)"}]
-    if not analysis_format:
-        a = analyze_sentiment("")
-        s = generate_reverse_signal(a, "")
-        analysis_format = [{"analysis": a, "signal": s}]
 
     trade_summary_data = get_trade_summary()
 
