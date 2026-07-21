@@ -13,7 +13,46 @@ from pathlib import Path
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
+
+# ===== 中文字体配置 =====
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
+
+_ZH_FONT = None
+_ZH_FONT_NAME = None
+for _f in fm.findSystemFonts():
+    if 'simhei' in _f.lower():
+        try:
+            _ZH_FONT = fm.FontProperties(fname=_f)
+            _ZH_FONT_NAME = _ZH_FONT.get_name()
+            break
+        except Exception:
+            continue
+if _ZH_FONT is None:
+    for _f in fm.findSystemFonts():
+        if 'yahei' in _f.lower():
+            try:
+                _ZH_FONT = fm.FontProperties(fname=_f)
+                _ZH_FONT_NAME = _ZH_FONT.get_name()
+                break
+            except Exception:
+                continue
+if _ZH_FONT is None:
+    for _f in fm.findSystemFonts():
+        if 'notosanssc' in _f.lower():
+            try:
+                _ZH_FONT = fm.FontProperties(fname=_f)
+                _ZH_FONT_NAME = _ZH_FONT.get_name()
+                break
+            except Exception:
+                continue
+
+# 设置 matplotlib 全局字体为 sans-serif（让数字/英文用默认字体）
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+matplotlib.rcParams['font.family'] = 'sans-serif'
+matplotlib.rcParams['axes.unicode_minus'] = False
+# ======================
+
 import matplotlib.dates as mdates
 import mplfinance as mpf
 
@@ -257,14 +296,6 @@ def plot_signal_chart(
             label="BEAR Rev",
         ))
 
-    # 标题（不使用emoji避免GBK问题）
-    title = f"{stock_code} {stock_name} — Feng Ge Reverse Signal"
-    if annotations:
-        total_ret = sum(a["return"] for a in annotations)
-        avg_ret = total_ret / len(annotations)
-        wins = sum(1 for a in annotations if a["return"] > 0)
-        title += f"\nSignals:{len(annotations)} Wins:{wins} Losses:{len(annotations)-wins} AvgRet:{avg_ret:+.1f}%"
-
     # 绘图
     CHART_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -273,13 +304,25 @@ def plot_signal_chart(
         addplot=addplots if addplots else None,
         volume=True,
         style="charles",
-        title=title,
+        title="",
         figsize=(16, 10),
         returnfig=True,
         tight_layout=True,
     )
 
     ax = axes[0]
+
+    # 中文标题（用 fontproperties 避免缺少中文字体）
+    title_cn = f"{stock_code} {stock_name} — 峰哥反向信号标注"
+    if annotations:
+        total_ret = sum(a["return"] for a in annotations)
+        avg_ret = total_ret / len(annotations)
+        wins = sum(1 for a in annotations if a["return"] > 0)
+        title_cn += f"\n信号{len(annotations)}次 | 胜{wins}败{len(annotations)-wins} | 均收益{avg_ret:+.1f}%"
+
+    t = ax.set_title(title_cn, fontsize=14, fontweight="bold")
+    if _ZH_FONT:
+        t.set_fontproperties(_ZH_FONT)
 
     # 在信号位置添加文字标注
     for idx, row in df_plot.iterrows():
@@ -290,6 +333,7 @@ def plot_signal_chart(
                 xytext=(0, 15), textcoords="offset points",
                 fontsize=9, color="green", fontweight="bold",
                 ha="center",
+                fontproperties=_ZH_FONT if _ZH_FONT else None,
                 arrowprops=dict(arrowstyle="->", color="green", lw=1),
             )
         if row["bearish_text"]:
@@ -299,6 +343,7 @@ def plot_signal_chart(
                 xytext=(0, -20), textcoords="offset points",
                 fontsize=9, color="red", fontweight="bold",
                 ha="center",
+                fontproperties=_ZH_FONT if _ZH_FONT else None,
                 arrowprops=dict(arrowstyle="->", color="red", lw=1),
             )
 
