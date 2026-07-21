@@ -307,15 +307,13 @@ def verify(config: dict) -> dict:
 # ==================== 阶段5: K线图 ====================
 
 def chart(analyze_result: dict, config: dict) -> dict:
-    """生成K线信号标注图。"""
-    from scripts.plot_signals import plot_multi_stock_charts
+    """生成K线信号标注图（含大盘指数）。"""
+    from scripts.plot_signals import plot_signal_chart, plot_multi_stock_charts
 
     all_codes = set()
     for r in analyze_result.get("results", []):
         codes = r["analysis"].get("stock_codes", [])
         all_codes.update(codes)
-
-    # 也从历史信号中收集有股票代码的
     if not all_codes:
         signals = get_all_signals(limit=100)
         for s in signals:
@@ -326,23 +324,30 @@ def chart(analyze_result: dict, config: dict) -> dict:
                 pass
 
     chart_paths = []
-    if all_codes:
-        print(f"\n  [CHART] 生成K线图 ({len(all_codes)}只股票)...")
-        end = datetime.now().strftime("%Y-%m-%d")
-        start = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
-        chart_paths = plot_multi_stock_charts(
-            list(all_codes)[:5],  # 最多5只
-            start_date=start,
-            end_date=end,
-        )
-        print(f"     图表: {len(chart_paths)}张")
-    else:
-        print(f"\n  [CHART] 无股票代码，跳过K线图")
+    end = datetime.now().strftime("%Y-%m-%d")
+    start = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
 
+    # 始终生成大盘指数
+    for idx_code, idx_name in [("000688", "科创50"), ("000300", "沪深300"), ("000001", "上证指数")]:
+        try:
+            p = plot_signal_chart(idx_code, idx_name, start, end)
+            if p:
+                chart_paths.append(p)
+        except Exception as e:
+            print(f"    跳过 {idx_code}: {e}")
+    print(f"  [CHART] 指数: {sum(1 for p in chart_paths if any(i in p for i in ['000688','000300','000001']))}/3张")
+
+    if all_codes:
+        print(f"  [CHART] 个股: {min(len(all_codes),5)}只...")
+        more = plot_multi_stock_charts(list(all_codes)[:5], start_date=start, end_date=end)
+        chart_paths.extend(more)
+
+    if chart_paths:
+        print(f"     图表合计: {len(chart_paths)}张")
+    else:
+        print(f"  [CHART] 无数据跳过")
     return {"charts": chart_paths}
 
-
-# ==================== 阶段6: 报告 ====================
 
 def report(analyze_result: dict, trade_result: dict,
            verify_result: dict, chart_paths: list[str], config: dict) -> dict:

@@ -61,6 +61,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 CHART_DIR = Path(__file__).resolve().parent.parent / "output" / "charts"
 
+# 大盘指数列表（始终生成图表）
+INDEX_CODES = [
+    ("000688", "科创50"),
+    ("000300", "沪深300"),
+    ("000001", "上证指数"),
+]
+
 # ==================== Pandadata 数据获取 ====================
 
 def _init_pandadata():
@@ -78,8 +85,15 @@ def _init_pandadata():
 
 
 def normalize_code(code: str) -> str:
-    """标准化A股代码为 Pandadata 格式。"""
-    code = code.strip().split(".")[0]  # 去掉已有后缀
+    """标准化A股代码为 Pandadata 格式。
+    
+    指数(000xxx/001xxx) -> SH, 个股: 6->SH, 0/3->SZ, 4/8->BJ
+    """
+    code = code.strip().split(".")[0]
+    if code.startswith(("000", "001")):
+        return f"{code}.SH"
+    elif code.startswith("399"):
+        return f"{code}.SZ"
     if code.startswith("6"):
         return f"{code}.SH"
     elif code.startswith(("0", "3")):
@@ -105,13 +119,14 @@ def fetch_kline(stock_code: str, start_date: str, end_date: str) -> pd.DataFrame
         return _generate_mock_kline(start_date, end_date)
 
     try:
-        from panda_data import get_stock_daily
+        from panda_data import get_stock_daily, get_index_daily
         symbol = normalize_code(stock_code)
-        df = get_stock_daily(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        code_raw = stock_code.strip().split(".")[0]
+        # 指数用 get_index_daily，个股用 get_stock_daily
+        if code_raw.startswith(("000", "001", "399")):
+            df = get_index_daily(symbol=symbol, start_date=start_date, end_date=end_date)
+        else:
+            df = get_stock_daily(symbol=symbol, start_date=start_date, end_date=end_date)
         if df is None or df.empty:
             print(f"  ⚠️ Pandadata 返回空数据，尝试模拟数据")
             return _generate_mock_kline(start_date, end_date)
@@ -301,7 +316,7 @@ def plot_signal_chart(
 
     fig, axes = mpf.plot(
         df_plot, type="candle",
-        addplot=addplots if addplots else None,
+        addplot=addplots if addplots else [],
         volume=True,
         style="charles",
         title="",
