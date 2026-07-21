@@ -86,10 +86,29 @@ def process_posts(posts: list[dict], data_source: str = "manual",
     else:
         metrics = {}
 
-    # 生成报告
+    # 生成K线图（在报告之前以便嵌入）
+    chart_paths = []
+    if save_charts:
+        print(f"\n[CHART] 生成K线图...")
+        all_codes = set()
+        for r in results:
+            codes = r["analysis"].get("stock_codes", [])
+            all_codes.update(codes)
+        if all_codes:
+            from scripts.plot_signals import plot_multi_stock_charts
+            dates_list = [r["post"]["date"] for r in results if r["post"].get("date")]
+            start = min(dates_list) if dates_list else ""
+            end = max(dates_list) if dates_list else ""
+            chart_paths = plot_multi_stock_charts(
+                list(all_codes), start_date=start, end_date=end,
+            )
+        if not chart_paths:
+            print(f"   未检测到股票代码，跳过K线图")
+
+    # 生成报告（嵌入K线图）
     report_path = ""
     if save_report and results:
-        print(f"\n📄 生成报告...")
+        print(f"\n[REPORT] 生成报告...")
         report_text = generate_report(
             posts=[r["post"] for r in results],
             analysis_results=[{
@@ -97,6 +116,7 @@ def process_posts(posts: list[dict], data_source: str = "manual",
                 "signal": r["signal"],
             } for r in results],
             data_source=data_source,
+            chart_paths=chart_paths,
         )
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         report_dir = Path(__file__).resolve().parent.parent / "output"
@@ -104,21 +124,6 @@ def process_posts(posts: list[dict], data_source: str = "manual",
         report_path = str(report_dir / f"峰哥反向指标_{timestamp}.md")
         Path(report_path).write_text(report_text, encoding="utf-8")
         print(f"   ✅ 报告已保存: {report_path}")
-
-    # 生成K线图
-    if save_charts:
-        print(f"\n📈 生成K线图...")
-        # 收集所有提到的股票代码
-        all_codes = set()
-        for r in results:
-            codes = r["analysis"].get("stock_codes", [])
-            all_codes.update(codes)
-        if all_codes:
-            from scripts.plot_signals import plot_multi_stock_charts
-            dates = [r["post"]["date"] for r in results if r["post"].get("date")]
-            start = min(dates) if dates else ""
-            end = max(dates) if dates else ""
-            plot_multi_stock_charts(list(all_codes), start_date=start, end_date=end)
 
     print(f"\n{'='*50}")
     print(f"✅ 完成！保存了 {signals_saved} 条信号")

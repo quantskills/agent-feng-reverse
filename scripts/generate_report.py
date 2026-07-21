@@ -10,11 +10,22 @@ from pathlib import Path
 from typing import Optional
 
 
+def _embed_charts(chart_paths: list[str]) -> str:
+    """将图表路径转为 Markdown 图片引用。"""
+    parts = []
+    for cp in chart_paths:
+        name = Path(cp).name
+        parts.append(f"![{name}](charts/{name})")
+    return "\n\n".join(parts)
+
+
 def generate_report(
     posts: list[dict],
     analysis_results: list[dict],
     data_source: str = "WebSearch",
     report_date: Optional[str] = None,
+    chart_paths: Optional[list[str]] = None,
+    backtest_ref: bool = False,
 ) -> str:
     """生成完整的 Markdown 报告。
 
@@ -56,6 +67,10 @@ def generate_report(
 | 🔴 反向看空（峰哥看多 → 谨慎） | {len(signals_bearish)} | {len(signals_bearish)/total*100:.0f}% |
 | 🟢 反向看多（峰哥看空 → 关注） | {len(signals_bullish)} | {len(signals_bullish)/total*100:.0f}% |
 | ⚪ 无明显信号 | {len(signals_neutral)} | {len(signals_neutral)/total*100:.0f}% |
+
+## 📈 K线信号图
+
+{_embed_charts(chart_paths) if chart_paths else '（本次信号未涉及具体股票代码，未生成K线图）'}
 
 ## 🔄 详细分析
 
