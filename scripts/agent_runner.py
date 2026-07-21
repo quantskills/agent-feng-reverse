@@ -58,18 +58,59 @@ def load_config(mode: str = "daily", **overrides) -> dict:
 def collect(config: dict) -> dict:
     """采集峰哥最新微博数据。
 
-    AGENT 模式下，数据通过以下方式获取：
-    1. 如果有用户提供的微博文本（通过文件或参数），直接读取
-    2. 否则返回空列表，由 SKILL 的 WebSearch 能力补充
+    数据来源（按优先级）：
+    1. 直接参数传入 (config['input_posts'])
+    2. 来自 stdin 管道 (piped input)
+    3. 缓存文件 weibo_input.json
+
+    都走完后自动清理，确保不重复处理。
 
     返回: {"posts": [...], "source": str, "new_count": int, "skipped": int}
     """
     posts = []
     source = "agent_auto"
 
-    # 检查是否有缓存文件
+    # 1. 从参数读取（Claude 直接传入）
+    input_posts = config.get("input_posts")
+    if input_posts:
+        for p in input_posts:
+            if isinstance(p, str):
+                posts.append({"date": datetime.now().strftime("%Y-%m-%d"), "content": p})
+            else:
+                posts.append(p)
+        source = "claude_websearch"
+
+    # 2. 从 stdin 读取（管道输入）
+    if not posts and not sys.stdin.isatty():
+        try:
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                import json as _json
+                try:
+                    parsed = _json.loads(stdin_data)
+                    if isinstance(parsed, list):
+                        raw = parsed
+                    elif isinstance(parsed, dict):
+                        raw = parsed.get("posts", parsed.get("weibo_posts", []))
+                    else:
+                        raw = [{"content": stdin_data}]
+                except _json.JSONDecodeError:
+                    raw = [{"content": line} for line in stdin_data.split("\n") if line.strip()]
+
+                for p in raw:
+                    if isinstance(p, str):
+                        posts.append({"date": datetime.now().strftime("%Y-%m-%d"), "content": p})
+                    else:
+                        if "date" not in p or not p.get("date"):
+                            p["date"] = datetime.now().strftime("%Y-%m-%d")
+                        posts.append(p)
+                source = "stdin_pipe"
+        except Exception:
+            pass
+
+    # 3. 从缓存文件读取
     cache_path = Path(config["data_dir"]) / "weibo_input.json"
-    if cache_path.exists():
+    if not posts and cache_path.exists():
         try:
             with open(cache_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -80,7 +121,6 @@ def collect(config: dict) -> dict:
                 else:
                     posts.append(p)
             source = f"cache({cache_path.name})"
-            # 读完后删除缓存，防止重复处理
             cache_path.unlink()
         except Exception as e:
             print(f"  [WARN] 缓存文件读取失败: {e}")
@@ -524,9 +564,16 @@ def main():
         return
 
     cmd = sys.argv[1]
+    input_posts = None
+
+    if "--input" in sys.argv:
+        idx = sys.argv.index("--input")
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            input_posts = [{"date": datetime.now().strftime("%Y-%m-%d"), "content": raw}]
 
     if cmd == "--daily":
-        config = load_config(mode="daily")
+        config = load_config(mode="daily", input_posts=input_posts)
         run_pipeline(config)
 
     elif cmd == "--watch":
