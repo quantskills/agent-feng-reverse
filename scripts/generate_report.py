@@ -119,17 +119,26 @@ def generate_report(
 
         # 信号 emoji
         signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}[s["signal"]]
-        sentiment_emoji = {"bullish": "📈", "bearish": "📉", "neutral": "➖"}[a["sentiment"]]
 
-        stocks = ", ".join(a["stock_codes"]) or "未提及"
-        sectors = ", ".join(a["sectors"]) or "未提及"
+        # 行为信号检测
+        behavioral = a.get("behavioral", {})
+        if behavioral.get("detected"):
+            actions = ", ".join(set(sig["action"] for sig in behavioral.get("signals", [])))
+            bw = behavioral.get("max_weight", 1)
+            analysis_text = f"行为信号「{actions}」(x{bw}权重)"
+        else:
+            sentiment_emoji = {"bullish": "📈", "bearish": "📉", "neutral": "➖"}[a["sentiment"]]
+            analysis_text = f"{sentiment_emoji} {a['sentiment']}（强度: {a['strength']}）"
+
+        stocks = ", ".join(a.get("stock_codes", [])) or "未提及"
+        sectors = ", ".join(a.get("sectors", [])) or "未提及"
 
         report += f"""### {i}. {date}
 
 **原文**：
 > {display_content}
 
-**观点分析**：{sentiment_emoji} {a['sentiment']}（强度: {a['strength']}）
+**分析**：{analysis_text}
 **涉及标的**：股票 [{stocks}] · 板块 [{sectors}]
 
 **{signal_emoji} 反向信号**：{s['signal_label']}（强度: {'⭐' * s['signal_strength']}）
