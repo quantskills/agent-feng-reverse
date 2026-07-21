@@ -1,6 +1,6 @@
 ---
 name: skill-feng-reverse
-description: 追踪微博"峰哥亡命天涯"的发言，提取其股票/市场观点，生成反向操作信号和跟踪报告。峰哥是A股知名反向指标——其公开观点具有稳定反向参考价值。Use when the user asks for 峰哥反向指标, 峰哥亡命天涯, 反向指标, 峰哥观点, 峰哥持仓, or to check what Feng Ge is saying about the market.
+description: 追踪微博"峰哥亡命天涯"的发言，提取其股票/市场观点，生成反向操作信号，并通过Pandadata实现K线图信号标注、回测验证和虚拟交易系统。峰哥是A股知名反向指标——其公开观点具有稳定反向参考价值。Use when the user asks for 峰哥反向指标, 峰哥亡命天涯, 反向指标, 峰哥观点, 峰哥持仓, or to check what Feng Ge is saying about the market.
 license: GPL-3.0-only
 metadata:
   organization: QuantSkills
@@ -59,6 +59,27 @@ quantSkills:
 | **重新下载软件/回归市场** | 🔴 **强烈看空** | **行为信号：追高回归=顶部特征** |
 
 > ⚠️ 反向信号是概率参考，不是绝对规则。峰哥的反向准确率需要通过持续跟踪来验证和校准。本工具仅为研究与教育目的，不构成投资建议。
+
+## 项目结构
+
+```
+├── SKILL.md                         ← Skill 定义与工作流（本文件）
+├── main.py                          ← CLI 入口（--track/--chart/--backtest 等）
+├── agents/                          ← Agent 加载器
+├── scripts/
+│   ├── analyze_sentiment.py         ← NLP分析 + 行为信号检测
+│   ├── signal_store.py              ← SQLite数据库 + 虚拟交易系统
+│   ├── plot_signals.py              ← K线图信号标注（mplfinance）
+│   ├── backtest.py                  ← 回测验证引擎
+│   ├── auto_track.py                ← 自动跟踪流水线
+│   ├── fetch_posts.py               ← 数据采集
+│   └── generate_report.py           ← 报告生成
+├── references/                      ← 方法论文档
+└── output/
+    ├── *.md                         ← 分析报告
+    ├── signal_store.db              ← SQLite信号数据库
+    └── charts/                      ← K线信号标注 PNG
+```
 
 ## 行为信号（重要补充）
 
@@ -218,11 +239,16 @@ python scripts/auto_track.py --file data.json  # 从文件批量处理
 本报告基于"峰哥反向指标"的社区经验逻辑生成，仅供研究参考，不构成任何投资建议。反向信号是概率参考，过去表现不代表未来结果。
 ```
 
-## 输出格式
+## 输出文件
 
-- 报告保存到 `output/峰哥反向指标_YYYYMMDD.md`
-- 如有历史报告，可要求叠加分析胜率趋势
-- 报告语言：中文（除非用户另有要求）
+| 文件 | 位置 | 说明 |
+|------|------|------|
+| 分析报告 | `output/峰哥反向指标_YYYYMMDD_HHMM.md` | AI 生成的图文报告 |
+| 回测报告 | `output/回测报告_YYYYMMDD.md` | 回测验证 + 虚拟交易盈亏 |
+| 信号数据库 | `output/signal_store.db` | SQLite，含 signals/trades/verifications 表 |
+| K线信号图 | `output/charts/{股票代码}_{起止日期}.png` | 蜡烛图+信号箭头标注 |
+
+报告语言：中文（除非用户另有要求）
 
 ## CLI 命令参考
 
