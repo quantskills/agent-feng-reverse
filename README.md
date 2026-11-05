@@ -86,3 +86,6 @@ GNU General Public License v3.0
 ## 免责声明
 
 本工具仅供研究与教育参考，不构成任何投资建议。反向信号是概率参考，过去表现不代表未来结果。所有分析结果仅供参考，使用者需自行承担投资风险。
+
+
+Pandadata 兼容维护：[abgyjaguo](https://github.com/abgyjaguo)，保留原项目作者署名。
