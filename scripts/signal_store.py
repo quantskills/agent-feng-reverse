@@ -317,11 +317,13 @@ def get_trades_by_stock(stock_code: str, status: str = "open") -> list[dict]:
 def get_latest_price_for_stock(stock_code: str) -> float | None:
     """通过 Pandadata 获取股票最新收盘价。"""
     import os
-    os.environ.setdefault("DEFAULT_USERNAME", "super_data_user")
-    os.environ.setdefault("DEFAULT_PASSWORD", "panda@2026^_^")
     try:
-        from panda_data import init_token, get_stock_daily
-        init_token()
+        from panda_data import init_token, get_stock_daily, get_last_trade_date
+        init_token(
+            username=os.getenv("DEFAULT_USERNAME") or os.getenv("PANDA_DATA_USERNAME"),
+            password=os.getenv("DEFAULT_PASSWORD") or os.getenv("PANDA_DATA_PASSWORD"),
+            base_url=os.getenv("JAVA_SERVICE_BASE_URL") or os.getenv("PANDADATA_BASE_URL"),
+        )
         # 标准化股票代码
         code = stock_code.strip().split(".")[0]
         if code.startswith("6"):
@@ -330,7 +332,9 @@ def get_latest_price_for_stock(stock_code: str) -> float | None:
             symbol = f"{code}.SZ"
         else:
             symbol = code
-        df = get_stock_daily(symbol=symbol)
+        trade_date = str(get_last_trade_date(exchange="SH")).replace("-", "")
+        df = get_stock_daily(symbol=[symbol], start_date=trade_date, end_date=trade_date,
+                             fields=["symbol", "date", "close"])
         if df is not None and not df.empty:
             # 取最新收盘价
             if "close" in df.columns:

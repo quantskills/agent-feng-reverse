@@ -336,3 +336,7 @@ python main.py --stats                # 数据库统计
 - 胜率统计需标明统计口径和样本量
 - 报告末尾必须有完整风险提示
 - 不构成投资建议，不承诺盈利
+
+## Pandadata compatibility
+
+[Pandadata 1.0.6 compatibility](references/pandadata-compatibility.md) — exact SDK baseline, validation scope, and shared guidance for all supported agent runtimes.
